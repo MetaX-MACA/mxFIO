@@ -184,25 +184,16 @@ static int fio_libcufile_init(struct thread_data *td)
 	int initialized;
 	int rc;
 
+#ifndef CONFIG_NDS
 	pthread_mutex_lock(&running_lock);
 	if (running == 0) {
 		assert(cufile_initialized == 0);
 		if (o->cuda_io == IO_CUFILE) {
 			/* only open the driver if this is the first worker thread */
-#ifndef CONFIG_NDS
 			status = cuFileDriverOpen();
 			if (status.err != CU_FILE_SUCCESS)
 				log_err("cuFileDriverOpen: err=%d:%s\n", status.err,
 					fio_libcufile_get_cuda_error(status));
-#else
-			o->my_gpu_id = fio_libcufile_find_gpu_id(td);
-			if (o->my_gpu_id < 0)
-				return 1;
-			status = nds_driver_open(o->my_gpu_id);
-			if (status != NDS_FILE_SUCCESS)
-				log_err("nds_driver_open: err=%d:%s\n", status,
-					fio_libcufile_get_cuda_error(status));
-#endif
 			else
 				cufile_initialized = 1;
 		}
@@ -210,6 +201,17 @@ static int fio_libcufile_init(struct thread_data *td)
 	running++;
 	initialized = cufile_initialized;
 	pthread_mutex_unlock(&running_lock);
+#else // Currently, Huawei NDS file system supports multi-process, but not multi-thread read/write.
+	o->my_gpu_id = fio_libcufile_find_gpu_id(td);
+	if (o->my_gpu_id < 0)
+		return 1;
+	status = nds_driver_open(o->my_gpu_id);
+	if (status != NDS_FILE_SUCCESS)
+		log_err("nds_driver_open: err=%d:%s\n", status,
+			fio_libcufile_get_cuda_error(status));
+	else
+		cufile_initialized = 1;
+#endif
 
 	if (o->cuda_io == IO_CUFILE && !initialized)
 		return 1;
